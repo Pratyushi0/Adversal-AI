@@ -1,0 +1,62 @@
+version: "3.9"
+
+services:
+  # ── Backend ───────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: adversarial-ai-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - ENV=production
+      - HOST=0.0.0.0
+      - PORT=8000
+      - ALLOWED_ORIGINS=http://localhost:3000
+      - JWT_SECRET=${JWT_SECRET:-supersecretkey_change_in_production}
+      - RATE_LIMIT_PER_MINUTE=${RATE_LIMIT_PER_MINUTE:-60}
+    volumes:
+      - ./backend:/app
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - adversarial-ai
+
+  # ── Frontend ──────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_API_URL=http://localhost:8000
+    container_name: adversarial-ai-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://backend:8000
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - adversarial-ai
+
+  # ── Redis (rate limiting) ─────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: adversarial-ai-redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+    networks:
+      - adversarial-ai
+
+networks:
+  adversarial-ai:
+    driver: bridge
